@@ -3,6 +3,7 @@ import argparse
 import random
 from collections import defaultdict
 import json
+import logging
 
 import numpy as np
 import cv2
@@ -17,7 +18,7 @@ def _middle(cnt):
     cy = int(M['m01']/M['m00'])
     return (cx, cy)
 
-def from_label(label_img_p):
+def _from_label(label_img_p):
     """Read one labeled image, and save the interested location.
     label_img_p (str), the path of a labeled image."""
     frame = cv2.imread(label_img_p)
@@ -30,8 +31,7 @@ def from_label(label_img_p):
     points = [_middle(cnt) for cnt in cnts]
     return points
 
-def draw_box(img, point, length=22):
-    use_color = (0, 255, 0)
+def _cal_box(point, length=22):
     x_length = random.randint(length-2, length+2)
     y_length = random.randint(length-2, length+2)
     x_random = random.randint(-2, 2)
@@ -43,55 +43,63 @@ def draw_box(img, point, length=22):
     y_min = y - y_length
     x_max = x + x_length
     y_max = y + y_length
+    return x_min, y_min, x_max, y_max
+
+def _draw_box(img, x_min, y_min, x_max, y_max):
+    use_color = (0, 255, 0)
     cv2.rectangle(img, (x_min, y_min), 
                 (x_max, y_max), use_color, 2)
-    return dict(zip(('x_min', 'y_min', 'x_max', 'y_max'), (x_min, y_min, x_max, y_max)))
-
+    
 def path_list(img_dir) -> list:
     img_p_list = [os.path.join(item[0], f_p) for item in os.walk(img_dir) for f_p in item[2] if item[2]]
     return img_p_list
 
-def get_name(p):
+def _get_name(p):
     return os.path.splitext(os.path.basename(p))[0].replace('_label', '')
 
-def path_matcher(img_dir, label_dir):
+def _path_matcher(img_dir, label_dir):
     img_path_list = path_list(img_dir)
     label_path_list = path_list(label_dir)
-    label_path_dict = dict([(get_name(p), p) for p in label_path_list])
+    label_path_dict = dict([(_get_name(p), p) for p in label_path_list])
     for img_path in img_path_list:
-        name = get_name(img_path)
+        name = _get_name(img_path)
         label_path = label_path_dict.get(name)
         if label_path:
             yield img_path, label_path, name
         else:
-            print(img_path)
+            logging.warning('%s does not match any lable', img_path)
 
-def main(write=False):
-    parse = argparse.ArgumentParser()
-    parse.add_argument('--img_dir', default='e:/Data/EOS/imgs')
-    parse.add_argument('--label_dir', default='e:/Data/EOS/nor_labels')
-    parse.add_argument('--dst', default='e:/Data/dst')
-    cmds = parse.parse_args()
-    img_dir = cmds.img_dir
-    label_dir = cmds.label_dir
-    dst = cmds.dst
+def main(argv=None, show_draw=False):
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--img_dir', default='e:/Data/EOS/imgs')
+    parser.add_argument('--label_dir', default='e:/Data/EOS/nor_labels')
+    parser.add_argument('--dst', default='e:/Data/dst')
+    options = parser.parse_args(argv)
+    img_dir = options.img_dir
+    label_dir = options.label_dir
+    dst = options.dst
+    os.makedirs(dst, exist_ok=1)
     # count = 0
     ret = defaultdict(dict)
-    for img_p, label_p, name in path_matcher(img_dir, label_dir):
+    for img_p, label_p, name in _path_matcher(img_dir, label_dir):
 
         img = cv2.imread(img_p)
-        points = from_label(label_p)
+        points = _from_label(label_p)
         temp = {}
         for idx, point in enumerate(points):
-            temp[idx] = draw_box(img, point)
+            x_min, y_min, x_max, y_max = _cal_box(point, 22)
+            temp[idx] = dict(zip(('x_min', 'y_min', 'x_max', 'y_max'), 
+                                 (x_min, y_min, x_max, y_max)))
+            if show_draw:
+                _draw_box(img, x_min, y_min, x_max, y_max)
         ret[name]['boxs'] = temp
         ret[name]['img_p'] = img_p
         ret[name]['label_p'] = label_p
-        if write:
+        if show_draw:
             cv2.imwrite(os.path.join(dst, f'{name}.png'), img)
 
-    with open('rets.json', 'w') as ret_json:
-        json.dump(ret, ret_json)
+    with open(os.path.join(dst, 'points.json'), 'w') as ponitj:
+        json.dump(ret, ponitj)
 
 if __name__ == "__main__":
     main()
