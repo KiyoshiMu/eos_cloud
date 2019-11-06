@@ -1,0 +1,33 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: eos-deployment
+spec:
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: eos-server
+    spec:
+      containers:
+      - name: eos
+        image: gcr.io/eeeooosss/myeos:stable
+        ports:
+        - containerPort: 8080
+        env:
+        - name: PORT
+          value: "8080"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    run: eos-service
+  name: eos-service
+spec:
+  ports:
+  - port: 8080
+    targetPort: 8080
+  selector:
+    app: eos-server
+  type: LoadBalancer
